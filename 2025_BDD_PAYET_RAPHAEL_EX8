@@ -1,0 +1,83 @@
+-- Question 1 : Créer la table Disponibilite
+
+CREATE TABLE Disponibilite (
+    id_disponibilite VARCHAR(50) PRIMARY KEY,
+    id_materiel VARCHAR(50),
+    date_debut DATE,
+    date_fin DATE,
+    FOREIGN KEY (id_materiel) REFERENCES Materiel(id_mat)
+);
+
+-- Question 2 : Modifier la table Reservation en ajoutant id_disponibilite
+
+ALTER TABLE Reservation
+ADD COLUMN id_disponibilite VARCHAR(50);
+
+ALTER TABLE Reservation
+ADD CONSTRAINT fk_disponibilite
+FOREIGN KEY (id_disponibilite) REFERENCES Disponibilite(id_disponibilite);
+
+-- Question 3 : Ajouter un trigger pour vérifier les contraintes de disponibilité
+
+CREATE OR REPLACE FUNCTION verifier_disponibilite()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM Disponibilite d
+        WHERE d.id_disponibilite = NEW.id_disponibilite
+          AND NEW.debut >= d.date_debut
+          AND NEW.fin <= d.date_fin
+    ) THEN
+        RAISE EXCEPTION 'Erreur : la période de réservation ne correspond pas à une disponibilité.';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_verifier_disponibilite
+BEFORE INSERT OR UPDATE ON Reservation
+FOR EACH ROW
+EXECUTE FUNCTION verifier_disponibilite();
+
+-- Question 4 : Vérifier la disponibilité d’un matériel pour une période donnée avec CASE
+
+SELECT 
+    id_disponibilite,
+    id_materiel,
+    date_debut,
+    date_fin,
+    CASE
+        WHEN date_debut <= DATE '2025-06-10' 
+         AND date_fin >= DATE '2025-06-15'
+        THEN 'OK'
+        ELSE 'KO'
+    END AS disponibilite_statut
+FROM Disponibilite
+WHERE id_materiel = 'M001';
+
+-- Question 5 : Gestion des disponibilités (ajouter, modifier, supprimer)
+
+-- Ajouter une disponibilité
+INSERT INTO Disponibilite (id_disponibilite, id_materiel, date_debut, date_fin)
+VALUES ('D001', 'M001', '2025-06-01', '2025-06-30');
+
+-- Modifier une disponibilité
+UPDATE Disponibilite
+SET date_debut = '2025-06-05', date_fin = '2025-07-05'
+WHERE id_disponibilite = 'D001';
+
+-- Supprimer une disponibilité
+DELETE FROM Disponibilite
+WHERE id_disponibilite = 'D001';
+
+-- Question 6 : Tests de réservation (OK et KO)
+
+-- Cas OK (réservation dans la période de disponibilité)
+INSERT INTO Reservation (id_user, id_mat, debut, fin, id_disponibilite)
+VALUES ('U001', 'M001', '2025-06-10', '2025-06-15', 'D001');
+
+-- Cas KO (réservation hors de la période de disponibilité), devrait générer une erreur
+INSERT INTO Reservation (id_user, id_mat, debut, fin, id_disponibilite)
+VALUES ('U002', 'M001', '2025-08-01', '2025-08-05', 'D001');
